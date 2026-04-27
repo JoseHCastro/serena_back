@@ -3,6 +3,7 @@
 import uuid
 
 from sqlalchemy import func, select
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.sessions.models import Session, SessionStatus
@@ -28,7 +29,9 @@ class SessionRepository:
             Session | None: The Session instance, or None if not found.
         """
         result = await self._db.execute(
-            select(Session).where(Session.id == session_id)
+            select(Session)
+            .options(joinedload(Session.patient), joinedload(Session.therapist))
+            .where(Session.id == session_id)
         )
         return result.scalar_one_or_none()
 
@@ -82,6 +85,7 @@ class SessionRepository:
         session = Session(**kwargs)
         self._db.add(session)
         await self._db.flush()
+        await self._db.refresh(session, ["patient", "therapist"])
         return session
 
     async def update(self, session: Session, **kwargs) -> Session:
@@ -97,4 +101,5 @@ class SessionRepository:
         for field, value in kwargs.items():
             setattr(session, field, value)
         await self._db.flush()
+        await self._db.refresh(session, ["patient", "therapist"])
         return session
