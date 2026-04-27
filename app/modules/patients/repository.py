@@ -4,6 +4,7 @@ import uuid
 from datetime import UTC, datetime
 
 from sqlalchemy import func, or_, select
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.patients.models import Patient
@@ -29,7 +30,9 @@ class PatientRepository:
             Patient | None: The Patient instance, or None if not found or deleted.
         """
         result = await self._db.execute(
-            select(Patient).where(
+            select(Patient)
+            .options(joinedload(Patient.therapist))
+            .where(
                 Patient.id == patient_id, Patient.deleted_at.is_(None)
             )
         )
@@ -118,6 +121,7 @@ class PatientRepository:
         patient = Patient(**kwargs)
         self._db.add(patient)
         await self._db.flush()
+        await self._db.refresh(patient, ["therapist"])
         return patient
 
     async def update(self, patient: Patient, **kwargs) -> Patient:
@@ -134,6 +138,8 @@ class PatientRepository:
             if value is not None or field == "medical_notes":
                 setattr(patient, field, value)
         await self._db.flush()
+        # Explicitly refresh attributes that might be updated by DB or relations
+        await self._db.refresh(patient, ["therapist", "updated_at"])
         return patient
 
     async def soft_delete(self, patient: Patient) -> Patient:

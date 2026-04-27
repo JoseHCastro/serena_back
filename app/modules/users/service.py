@@ -94,6 +94,11 @@ class UserService:
             items=[UserResponse.model_validate(u) for u in users],
         )
 
+    async def list_therapists(self) -> list[UserResponse]:
+        """Return all active therapists in the system."""
+        users, _ = await self._user_repo.list_paginated(page=1, page_size=1000, role_name="therapist")
+        return [UserResponse.model_validate(u) for u in users]
+
     async def update_user(self, user_id: uuid.UUID, payload: UserUpdate) -> UserResponse:
         """Apply a partial update to a user.
 

@@ -12,6 +12,15 @@ from app.modules.users.service import UserService
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
+@router.get("/therapists", response_model=list[UserResponse], summary="List all therapists")
+async def list_therapists(db: DbSession, _: CurrentUser) -> list[UserResponse]:
+    """Return a list of all active users with the 'therapist' role.
+
+    Accessible by any authenticated user.
+    """
+    return await UserService(db).list_therapists()
+
+
 @router.get("/me", response_model=UserResponse, summary="Get current user profile")
 async def get_me(current_user: CurrentUser) -> UserResponse:
     """Return the authenticated user's own profile.
