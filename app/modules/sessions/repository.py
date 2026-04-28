@@ -2,11 +2,12 @@
 
 import uuid
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, or_
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.modules.sessions.models import Session, SessionStatus
+from app.modules.patients.models import Patient
 
 
 class SessionRepository:
@@ -42,6 +43,7 @@ class SessionRepository:
         patient_id: uuid.UUID | None = None,
         therapist_id: uuid.UUID | None = None,
         status: SessionStatus | None = None,
+        search: str | None = None,
     ) -> tuple[list[Session], int]:
         """Return a paginated, filterable session list ordered by scheduled date.
 
@@ -51,17 +53,27 @@ class SessionRepository:
             patient_id: Filter by patient.
             therapist_id: Filter by therapist.
             status: Filter by session lifecycle status.
+            search: Filter by text in notes or patient name.
 
         Returns:
             tuple[list[Session], int]: Page of sessions and total count.
         """
-        query = select(Session)
+        query = select(Session).join(Session.patient)
         if patient_id:
             query = query.where(Session.patient_id == patient_id)
         if therapist_id:
             query = query.where(Session.therapist_id == therapist_id)
         if status:
             query = query.where(Session.status == status)
+        if search:
+            search_pattern = f"%{search}%"
+            query = query.where(
+                or_(
+                    Patient.first_name.ilike(search_pattern),
+                    Patient.last_name.ilike(search_pattern),
+                    Session.notes.ilike(search_pattern)
+                )
+            )
         query = query.order_by(Session.scheduled_at.desc())
 
         count_result = await self._db.execute(

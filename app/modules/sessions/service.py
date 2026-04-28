@@ -140,6 +140,7 @@ class SessionService:
         patient_id: uuid.UUID | None,
         status: SessionStatus | None,
         current_user: User,
+        search: str | None = None,
     ) -> PaginatedSessions:
         """Return a paginated list of sessions, scoped by role.
 
@@ -149,6 +150,7 @@ class SessionService:
             patient_id: Optional patient filter.
             status: Optional status filter.
             current_user: The authenticated user.
+            search: Optional search text.
 
         Returns:
             PaginatedSessions: Paginated result with metadata.
@@ -162,6 +164,7 @@ class SessionService:
             patient_id=patient_id,
             therapist_id=therapist_id,
             status=status,
+            search=search,
         )
         return PaginatedSessions(
             total=total,

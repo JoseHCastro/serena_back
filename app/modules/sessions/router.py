@@ -43,6 +43,7 @@ async def list_sessions(
     page_size: int = Query(20, ge=1, le=100),
     patient_id: uuid.UUID | None = Query(None),
     status: SessionStatus | None = Query(None),
+    search: str | None = Query(None, description="Search by notes or patient name"),
 ) -> PaginatedSessions:
     """Return a paginated list of sessions, scoped by the caller's role.
 
@@ -53,12 +54,13 @@ async def list_sessions(
         page_size: Records per page.
         patient_id: Optional patient filter.
         status: Optional status filter.
+        search: Optional search term.
 
     Returns:
         PaginatedSessions: Paginated result.
     """
     return await SessionService(db).list_sessions(
-        page, page_size, patient_id, status, current_user
+        page, page_size, patient_id, status, current_user, search
     )
 
 
