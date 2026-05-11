@@ -1,7 +1,6 @@
 """Biometric service — emotional analysis engine (real-time + post-session)."""
 
 import base64
-import random
 import uuid
 from datetime import UTC, datetime
 
@@ -11,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import BadRequestError, NotFoundError
 from app.modules.alerts.models import AlertSeverity, AlertType
 from app.modules.alerts.repository import AlertRepository
+from app.modules.biometric.emotion_engine import EmotionEngine
 from app.modules.biometric.models import AnalysisJobStatus
 from app.modules.biometric.repository import (
     BiometricJobRepository,
@@ -37,36 +37,29 @@ STRESS_THRESHOLD = 0.65    # anger + fear combined triggers high_stress
 CRITICAL_EMOTION_THRESHOLD = 0.85  # single emotion dominance
 
 
-def _analyze_frame_mock(frame_base64: str, timestamp_offset: float) -> dict:
-    """Mock emotional analysis of a single video frame.
+def _analyze_frame(frame_base64: str, timestamp_offset: float) -> dict:
+    """Analyze a single base64-encoded video frame for facial emotions.
 
-    In production, replace this function with a real model call, e.g.:
-        from deepface import DeepFace
-        result = DeepFace.analyze(img_path, actions=["emotion"], ...)
+    Uses the EmotionEngine singleton which loads an ONNX model for real
+    inference. If no model file is available, it gracefully falls back
+    to mock random data for development.
+
+    The engine performs:
+        1. Base64 decode → image bytes
+        2. Face detection and cropping (MediaPipe)
+        3. Emotion classification (ONNX Runtime / MobileNetV2)
+        4. Softmax → probability distribution over 7 emotions
 
     Args:
         frame_base64: Base64-encoded image frame (JPEG/PNG).
         timestamp_offset: Seconds from session start.
 
     Returns:
-        dict: Emotion scores and dominant emotion.
+        dict: Emotion scores (happiness, sadness, anger, fear, disgust,
+              surprise, neutral) plus dominant_emotion and confidence.
     """
-    emotions = ["happiness", "sadness", "anger", "fear", "disgust", "surprise", "neutral"]
-    scores = [random.random() for _ in emotions]
-    total = sum(scores)
-    normalized = [round(s / total, 4) for s in scores]
-    dominant_idx = normalized.index(max(normalized))
-    return {
-        "happiness": normalized[0],
-        "sadness": normalized[1],
-        "anger": normalized[2],
-        "fear": normalized[3],
-        "disgust": normalized[4],
-        "surprise": normalized[5],
-        "neutral": normalized[6],
-        "dominant_emotion": emotions[dominant_idx],
-        "confidence": normalized[dominant_idx],
-    }
+    engine = EmotionEngine.get_instance()
+    return engine.analyze_base64(frame_base64)
 
 
 class BiometricService:
@@ -142,7 +135,7 @@ class BiometricService:
             SnapshotResponse: The analysis result persisted as a snapshot.
         """
         session = await self._get_active_session(session_id)
-        analysis = _analyze_frame_mock(frame_base64, timestamp_offset)
+        analysis = _analyze_frame(frame_base64, timestamp_offset)
         snapshot_data = SnapshotCreate(timestamp_offset=timestamp_offset, **analysis)
         snapshot = await self._snapshot_repo.create(
             session_id=session_id, **snapshot_data.model_dump()

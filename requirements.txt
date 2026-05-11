@@ -45,3 +45,9 @@ pytest-cov==5.0.0
 
 # --- Data Generation (Seeders) ---
 faker==24.11.0                # Realistic fake data for seeders
+
+# --- Emotion Detection (Inference Only) ---
+onnxruntime==1.18.0           # ONNX model inference (CPU, lightweight)
+mediapipe==0.10.14            # Face detection (MediaPipe BlazeFace)
+opencv-python-headless==4.10.0.84  # Image/video processing (no GUI)
+numpy>=1.26.0                 # Array operations

@@ -16,6 +16,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libcairo2-dev \
     libpango1.0-dev \
     libgdk-pixbuf-xlib-2.0-dev \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies into a virtual environment
@@ -35,6 +37,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpangocairo-1.0-0 \
     libgdk-pixbuf-2.0-0 \
     libffi8 \
+    libgl1 \
+    libglib2.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security
