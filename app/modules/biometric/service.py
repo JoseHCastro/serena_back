@@ -140,6 +140,11 @@ class BiometricService:
         snapshot = await self._snapshot_repo.create(
             session_id=session_id, **snapshot_data.model_dump()
         )
+        
+        # Dispatch background task to upload the frame to Cloudinary
+        from app.modules.biometric.tasks import upload_frame_background
+        upload_frame_background.delay(str(session_id), frame_base64, str(snapshot.id))
+        
         await self._check_and_create_alerts(session, snapshot_data)
         return SnapshotResponse.model_validate(snapshot)
 
@@ -199,6 +204,7 @@ class BiometricService:
             status=AnalysisJobStatus.PENDING,
             celery_task_id=celery_task.id,
         )
+        await self._db.refresh(job)
         return AnalysisJobResponse.model_validate(job)
 
     async def get_analysis_job(self, session_id: uuid.UUID) -> AnalysisJobResponse:
@@ -252,6 +258,27 @@ class BiometricService:
                 )
             )
         return ComparativeReport(patient_id=patient_id, sessions=points)
+
+    async def trigger_media_deletion(self, session_id: uuid.UUID) -> dict:
+        """Queue a Celery task to cascade delete all media for a session.
+
+        Args:
+            session_id: UUID of the session.
+
+        Returns:
+            dict: Status message.
+            
+        Raises:
+            NotFoundError: If the session does not exist.
+        """
+        from app.modules.biometric.tasks import delete_session_media_background
+        
+        session = await self._session_repo.get_by_id(session_id)
+        if not session:
+            raise NotFoundError("Session")
+            
+        delete_session_media_background.delay(str(session_id))
+        return {"message": "Media deletion queued in background."}
 
     async def _check_and_create_alerts(
         self, session: Session, snapshot: SnapshotCreate

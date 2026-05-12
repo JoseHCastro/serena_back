@@ -22,6 +22,26 @@ router = APIRouter(prefix="/biometric", tags=["Biometric Analysis"])
 
 
 # ---------------------------------------------------------------------------
+# Configuration
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/config",
+    summary="Get biometric analysis configuration",
+)
+async def get_biometric_config(_: CurrentUser) -> dict:
+    """Return biometric analysis settings like frame sampling interval.
+
+    Returns:
+        dict: Settings for the frontend to adjust capturing rates.
+    """
+    from app.core.config import settings
+
+    return {"frame_sampling_interval": settings.FRAME_SAMPLING_INTERVAL}
+
+
+# ---------------------------------------------------------------------------
 # Real-time REST snapshot submission
 # ---------------------------------------------------------------------------
 
@@ -148,6 +168,28 @@ async def get_analysis_job(
         AnalysisJobResponse: Current job status, celery_task_id, and results.
     """
     return await BiometricService(db).get_analysis_job(session_id)
+
+
+@router.delete(
+    "/sessions/{session_id}/media",
+    status_code=202,
+    summary="Cascade delete all session media",
+)
+async def delete_session_media(
+    session_id: uuid.UUID, db: DbSession, _: CurrentUser
+) -> dict:
+    """Trigger an async task to delete all Cloudinary media for a session.
+    
+    This includes all frames from snapshots and the original video.
+
+    Args:
+        session_id: UUID of the session.
+        db: Database session.
+
+    Returns:
+        dict: Acknowledgment message.
+    """
+    return await BiometricService(db).trigger_media_deletion(session_id)
 
 
 # ---------------------------------------------------------------------------

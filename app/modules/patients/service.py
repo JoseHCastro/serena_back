@@ -1,6 +1,7 @@
 """Patients service — clinical record management business logic."""
 
 import uuid
+from app.modules.sessions.repository import SessionRepository
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -27,6 +28,7 @@ class PatientService:
         self._db = db
         self._repo = PatientRepository(db)
         self._user_repo = UserRepository(db)
+        self._session_repo = SessionRepository(db)
 
     async def create_patient(
         self, payload: PatientCreate, current_user: User
@@ -151,4 +153,12 @@ class PatientService:
         patient = await self._repo.get_by_id(patient_id)
         if not patient:
             raise NotFoundError("Patient")
+            
+        # 1. Cleanup all associated sessions' media in Cloudinary
+        from app.modules.biometric.tasks import delete_session_media_background
+        sessions = await self._session_repo.list_by_patient(patient_id)
+        for session in sessions:
+            delete_session_media_background.delay(str(session.id))
+            
+        # 2. Soft-delete the patient record
         await self._repo.soft_delete(patient)

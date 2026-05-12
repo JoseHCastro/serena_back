@@ -87,8 +87,8 @@ def analyze_session_video(self, session_id_str: str, video_url: str) -> dict:
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 duration = total_frames / fps
 
-                # Sample 1 frame every 2 seconds
-                sample_interval = 2.0
+                # Sample frame interval from config
+                sample_interval = settings.FRAME_SAMPLING_INTERVAL
                 frame_indices = [
                     int(t * fps) for t in np.arange(0, duration, sample_interval)
                 ]
@@ -188,3 +188,137 @@ def analyze_session_video(self, session_id_str: str, video_url: str) -> dict:
                 await engine_db.dispose()
 
     return asyncio.run(_run())
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=10)
+def upload_frame_background(self, session_id_str: str, frame_base64: str, snapshot_id_str: str) -> None:
+    """Celery task: upload a single real-time frame to Cloudinary and update snapshot.
+
+    Args:
+        session_id_str: UUID string of the session.
+        frame_base64: Base64 encoded JPEG of the frame.
+        snapshot_id_str: UUID string of the snapshot record to update.
+    """
+    import asyncio
+
+    async def _run() -> None:
+        import base64
+        import io
+        import uuid
+        from fastapi import UploadFile
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+        from app.core.config import settings
+        from app.modules.media.service import MediaService
+        from app.modules.biometric.repository import EmotionalSnapshotRepository
+
+        engine_db = create_async_engine(settings.DATABASE_URL, echo=False)
+        factory = async_sessionmaker(engine_db, class_=AsyncSession, expire_on_commit=False)
+
+        async with factory() as db:
+            snapshot_repo = EmotionalSnapshotRepository(db)
+            media_service = MediaService()
+
+            try:
+                frame_bytes = base64.b64decode(frame_base64)
+                class MockUploadFile:
+                    def __init__(self, content):
+                        self.content = content
+                    async def read(self):
+                        return self.content
+
+                upload_result = await media_service.upload_image(
+                    MockUploadFile(frame_bytes),
+                    folder=f"serena/sessions/{session_id_str}/frames"
+                )
+
+                # Update the snapshot with the secure URL
+                snapshot = await snapshot_repo.get_by_id(uuid.UUID(snapshot_id_str))
+                if snapshot:
+                    # Merge existing raw_data with the new URL
+                    raw_data = snapshot.raw_data or {}
+                    raw_data["frame_url"] = upload_result.secure_url
+                    snapshot.raw_data = raw_data
+                    await db.commit()
+
+            except Exception as exc:
+                logger.error("Failed to upload background frame: {}", exc)
+                raise self.retry(exc=exc)
+            finally:
+                await engine_db.dispose()
+
+    asyncio.run(_run())
+
+
+@celery_app.task(bind=True, max_retries=3, default_retry_delay=30)
+def delete_session_media_background(self, session_id_str: str) -> None:
+    """Celery task: cascade delete all Cloudinary media for a session.
+
+    Deletes all uploaded frames (from snapshots) and the session video.
+
+    Args:
+        session_id_str: UUID string of the session.
+    """
+    import asyncio
+
+    async def _run() -> None:
+        import uuid
+        from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
+        from app.core.config import settings
+        from app.modules.media.service import MediaService
+        from app.modules.biometric.repository import EmotionalSnapshotRepository
+        from app.modules.sessions.repository import SessionRepository
+
+        engine_db = create_async_engine(settings.DATABASE_URL, echo=False)
+        factory = async_sessionmaker(engine_db, class_=AsyncSession, expire_on_commit=False)
+
+        async with factory() as db:
+            snapshot_repo = EmotionalSnapshotRepository(db)
+            session_repo = SessionRepository(db)
+            media_service = MediaService()
+            session_id = uuid.UUID(session_id_str)
+
+            try:
+                # 1. Delete all snapshot frames from Cloudinary
+                snapshots = await snapshot_repo.list_by_session(session_id)
+                for s in snapshots:
+                    raw_data = s.raw_data or {}
+                    frame_url = raw_data.get("frame_url")
+                    if frame_url:
+                        # Extract public_id from Cloudinary URL
+                        # Example: https://res.cloudinary.com/cloud/image/upload/v12345/serena/sessions/id/frames/file.jpg
+                        try:
+                            # Simple extraction: remove prefix up to /upload/v.../ and remove extension
+                            parts = frame_url.split("/upload/")
+                            if len(parts) > 1:
+                                path_part = parts[1].split("/", 1)[1] # skip version
+                                public_id = path_part.rsplit(".", 1)[0]
+                                await media_service.delete_asset(public_id, resource_type="image")
+                        except Exception as e:
+                            logger.warning(f"Could not extract/delete image from {frame_url}: {e}")
+
+                # 2. Delete snapshots from DB
+                for s in snapshots:
+                    await db.delete(s)
+                await db.commit()
+
+                # 3. Delete session video from Cloudinary
+                session = await session_repo.get_by_id(session_id)
+                if session and session.video_public_id:
+                    try:
+                        await media_service.delete_asset(session.video_public_id, resource_type="video")
+                        # Nullify video references in DB
+                        session.video_url = None
+                        session.video_public_id = None
+                        await db.commit()
+                    except Exception as e:
+                        logger.warning(f"Could not delete video {session.video_public_id}: {e}")
+
+                logger.info(f"Cascading delete of media for session {session_id} completed.")
+
+            except Exception as exc:
+                logger.error("Failed to cascade delete media: {}", exc)
+                raise self.retry(exc=exc)
+            finally:
+                await engine_db.dispose()
+
+    asyncio.run(_run())

@@ -77,10 +77,23 @@ class EmotionEngine:
         if MODEL_PATH.exists():
             try:
                 import onnxruntime as ort
+                import shutil
+                import tempfile
+
+                # Copy to /tmp to avoid file descriptor issues with Docker volumes
+                tmp_model_path = Path(tempfile.gettempdir()) / "emotion_model.onnx"
+                if not tmp_model_path.exists():
+                    shutil.copy2(MODEL_PATH, tmp_model_path)
+                    
+                # Check if there is an external data file and copy it too
+                data_model_path = MODEL_PATH.with_name(MODEL_PATH.name + ".data")
+                tmp_data_path = tmp_model_path.with_name(tmp_model_path.name + ".data")
+                if data_model_path.exists() and not tmp_data_path.exists():
+                    shutil.copy2(data_model_path, tmp_data_path)
 
                 # Use CPU provider (safe for all environments)
                 self._session = ort.InferenceSession(
-                    str(MODEL_PATH),
+                    str(tmp_model_path),
                     providers=["CPUExecutionProvider"],
                 )
                 self._input_name = self._session.get_inputs()[0].name

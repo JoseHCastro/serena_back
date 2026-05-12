@@ -24,7 +24,15 @@ class EmotionalSnapshotRepository:
         snapshot = EmotionalSnapshot(**kwargs)
         self._db.add(snapshot)
         await self._db.flush()
+        await self._db.refresh(snapshot)
         return snapshot
+
+    async def get_by_id(self, snapshot_id: uuid.UUID) -> EmotionalSnapshot | None:
+        """Retrieve a single snapshot by its ID."""
+        result = await self._db.execute(
+            select(EmotionalSnapshot).where(EmotionalSnapshot.id == snapshot_id)
+        )
+        return result.scalar_one_or_none()
 
     async def list_by_session(self, session_id: uuid.UUID) -> list[EmotionalSnapshot]:
         """Retrieve all snapshots for a session ordered by timestamp_offset."""
@@ -83,6 +91,7 @@ class MicroexpressionRepository:
         event = MicroexpressionEvent(**kwargs)
         self._db.add(event)
         await self._db.flush()
+        await self._db.refresh(event)
         return event
 
     async def list_by_session(self, session_id: uuid.UUID) -> list[MicroexpressionEvent]:

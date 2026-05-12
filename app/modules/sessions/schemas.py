@@ -36,6 +36,7 @@ class SessionResponse(BaseModel):
     ended_at: datetime | None
     status: SessionStatus
     video_url: str | None
+    video_public_id: str | None
     notes: str | None
     patient: PatientSummary
     therapist: UserSummary
@@ -80,6 +81,7 @@ class EmotionalTimelinePoint(BaseModel):
     neutral: float
     dominant_emotion: str
     confidence: float
+    raw_data: dict | None = None
 
 
 class EmotionalTimeline(BaseModel):

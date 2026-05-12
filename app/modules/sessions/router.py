@@ -2,7 +2,7 @@
 
 import uuid
 
-from fastapi import APIRouter, Body, Query
+from fastapi import APIRouter, Body, Query, UploadFile, File
 
 from app.core.dependencies import CurrentUser, DbSession
 from app.modules.sessions.models import SessionStatus
@@ -141,6 +141,43 @@ async def update_session(
     return SessionResponse.model_validate(updated)
 
 
+@router.post("/{session_id}/upload-video", response_model=SessionResponse, summary="Upload session video")
+async def upload_session_video(
+    session_id: uuid.UUID,
+    db: DbSession,
+    _: CurrentUser,
+    file: UploadFile = File(...),
+) -> SessionResponse:
+    """Upload a recorded video for a session to Cloudinary.
+
+    Args:
+        session_id: UUID of the session.
+        db: Database session.
+        file: The video file.
+
+    Returns:
+        SessionResponse: The updated session with video URL.
+    """
+    from app.modules.media.service import MediaService
+    from app.modules.sessions.repository import SessionRepository
+    from app.core.exceptions import NotFoundError
+
+    repo = SessionRepository(db)
+    session = await repo.get_by_id(session_id)
+    if not session:
+        raise NotFoundError("Session")
+
+    media_service = MediaService()
+    result = await media_service.upload_video(file, folder=f"serena/sessions/{session_id}")
+
+    updated = await repo.update(
+        session,
+        video_url=result.secure_url,
+        video_public_id=result.public_id,
+    )
+    return SessionResponse.model_validate(updated)
+
+
 @router.get(
     "/{session_id}/timeline",
     response_model=EmotionalTimeline,
@@ -159,3 +196,16 @@ async def get_emotional_timeline(
         EmotionalTimeline: All emotional snapshots ordered chronologically.
     """
     return await SessionService(db).get_emotional_timeline(session_id)
+
+
+@router.delete("/{session_id}", status_code=204, summary="Delete a session")
+async def delete_session(
+    session_id: uuid.UUID, db: DbSession, _: CurrentUser
+) -> None:
+    """Delete a session and its associated media in Cloudinary.
+
+    Args:
+        session_id: UUID of the session to delete.
+        db: Database session.
+    """
+    await SessionService(db).delete_session(session_id)

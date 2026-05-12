@@ -1,6 +1,8 @@
 """Users service — user and role management business logic."""
 
 import uuid
+from app.modules.patients.repository import PatientRepository
+from app.modules.sessions.repository import SessionRepository
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -26,6 +28,8 @@ class UserService:
         self._db = db
         self._user_repo = UserRepository(db)
         self._role_repo = RoleRepository(db)
+        self._patient_repo = PatientRepository(db)
+        self._session_repo = SessionRepository(db)
 
     async def create_user(self, payload: UserCreate) -> UserResponse:
         """Register a new user after validating uniqueness and role existence.
@@ -132,4 +136,18 @@ class UserService:
         user = await self._user_repo.get_by_id(user_id)
         if not user:
             raise NotFoundError("User")
+            
+        # 1. Cleanup all associated media for all patients of this therapist
+        from app.modules.biometric.tasks import delete_session_media_background
+        
+        # List all patients for this therapist
+        patients, _ = await self._patient_repo.list_paginated(page=1, page_size=1000, therapist_id=user_id)
+        for patient in patients:
+            sessions = await self._session_repo.list_by_patient(patient.id)
+            for session in sessions:
+                delete_session_media_background.delay(str(session.id))
+            # Also soft delete the patient
+            await self._patient_repo.soft_delete(patient)
+
+        # 2. Soft-delete the user
         await self._user_repo.soft_delete(user)

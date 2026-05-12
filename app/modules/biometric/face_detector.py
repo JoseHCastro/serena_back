@@ -11,7 +11,6 @@ import io
 from typing import TYPE_CHECKING
 
 import cv2
-import mediapipe as mp
 import numpy as np
 from loguru import logger
 
@@ -47,20 +46,15 @@ class FaceDetector:
         """
         self._min_confidence = min_confidence
         self._padding = padding
-        self._detector = mp.solutions.face_detection.FaceDetection(
-            model_selection=model_selection,
-            min_detection_confidence=min_confidence,
-        )
+        # Use OpenCV Haar Cascades instead of MediaPipe for better compatibility
+        self._detector = cv2.CascadeClassifier(cv2.data.haarcascades + 'haarcascade_frontalface_default.xml')
 
     def detect_and_crop(
         self,
         image: np.ndarray,
         target_size: tuple[int, int] = (224, 224),
     ) -> np.ndarray | None:
-        """Detect the primary face in an image and return a cropped, resized version.
-
-        If multiple faces are detected, the one with the highest confidence
-        score is selected (typically the largest / closest face).
+        """Detect the primary face in an image using OpenCV and return a cropped, resized version.
 
         Args:
             image: Input image as a NumPy array in BGR format (OpenCV convention).
@@ -70,34 +64,34 @@ class FaceDetector:
             A resized face crop as a NumPy array in RGB format, or None
             if no face was detected.
         """
-        h, w = image.shape[:2]
-        # MediaPipe expects RGB
-        rgb = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
-        results = self._detector.process(rgb)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        faces = self._detector.detectMultiScale(
+            gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30)
+        )
 
-        if not results.detections:
+        if len(faces) == 0:
             return None
 
-        # Pick the detection with the highest confidence
-        best = max(results.detections, key=lambda d: d.score[0])
-        bbox = best.location_data.relative_bounding_box
+        # Pick the largest face detected
+        (x, y, w, h) = max(faces, key=lambda b: b[2] * b[3])
 
-        # Convert relative coords to absolute pixels with padding
-        pad_w = bbox.width * self._padding
-        pad_h = bbox.height * self._padding
+        # Add padding
+        pad_w = int(w * self._padding)
+        pad_h = int(h * self._padding)
 
-        x1 = max(0, int((bbox.xmin - pad_w) * w))
-        y1 = max(0, int((bbox.ymin - pad_h) * h))
-        x2 = min(w, int((bbox.xmin + bbox.width + pad_w) * w))
-        y2 = min(h, int((bbox.ymin + bbox.height + pad_h) * h))
+        y1 = max(0, y - pad_h)
+        y2 = min(image.shape[0], y + h + pad_h)
+        x1 = max(0, x - pad_w)
+        x2 = min(image.shape[1], x + w + pad_w)
 
         # Validate crop dimensions
         if x2 - x1 < 10 or y2 - y1 < 10:
             logger.warning("Face crop too small ({w}x{h}), skipping", w=x2 - x1, h=y2 - y1)
             return None
 
-        face_crop = rgb[y1:y2, x1:x2]
-        face_resized = cv2.resize(face_crop, target_size, interpolation=cv2.INTER_AREA)
+        face_crop_bgr = image[y1:y2, x1:x2]
+        face_crop_rgb = cv2.cvtColor(face_crop_bgr, cv2.COLOR_BGR2RGB)
+        face_resized = cv2.resize(face_crop_rgb, target_size, interpolation=cv2.INTER_AREA)
 
         return face_resized  # RGB format, shape (224, 224, 3)
 

@@ -85,6 +85,8 @@ class SessionService:
             status=SessionStatus.ACTIVE,
             started_at=datetime.now(UTC),
         )
+        # Ensure all fields are refreshed for Pydantic
+        await self._db.refresh(updated)
         return SessionResponse.model_validate(updated)
 
     async def end_session(
@@ -114,6 +116,8 @@ class SessionService:
             update_kwargs["notes"] = notes
 
         updated = await self._repo.update(session, **update_kwargs)
+        # Ensure all fields are refreshed for Pydantic
+        await self._db.refresh(updated)
         return SessionResponse.model_validate(updated)
 
     async def get_session(self, session_id: uuid.UUID) -> SessionResponse:
@@ -195,7 +199,9 @@ class SessionService:
         snapshots = await snapshot_repo.list_by_session(session_id)
 
         duration = None
-        if session.started_at and session.ended_at:
+        if snapshots:
+            duration = max(s.timestamp_offset for s in snapshots)
+        elif session.started_at and session.ended_at:
             duration = (session.ended_at - session.started_at).total_seconds()
 
         points = [
@@ -210,6 +216,7 @@ class SessionService:
                 neutral=s.neutral,
                 dominant_emotion=s.dominant_emotion,
                 confidence=s.confidence,
+                raw_data=s.raw_data,
             )
             for s in snapshots
         ]
@@ -219,3 +226,23 @@ class SessionService:
             duration_seconds=duration,
             points=points,
         )
+
+    async def delete_session(self, session_id: uuid.UUID) -> None:
+        """Delete a session and trigger background media cleanup on Cloudinary.
+
+        Args:
+            session_id: UUID of the session to delete.
+
+        Raises:
+            NotFoundError: If the session does not exist.
+        """
+        session = await self._repo.get_by_id(session_id)
+        if not session:
+            raise NotFoundError("Session")
+
+        # 1. Trigger background media cleanup (Celery)
+        from app.modules.biometric.tasks import delete_session_media_background
+        delete_session_media_background.delay(str(session_id))
+
+        # 2. Delete session from DB
+        await self._repo.delete(session)

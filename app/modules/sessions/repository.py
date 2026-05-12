@@ -97,7 +97,7 @@ class SessionRepository:
         session = Session(**kwargs)
         self._db.add(session)
         await self._db.flush()
-        await self._db.refresh(session, ["patient", "therapist"])
+        await self._db.refresh(session, ["patient", "therapist", "updated_at", "created_at"])
         return session
 
     async def update(self, session: Session, **kwargs) -> Session:
@@ -113,5 +113,28 @@ class SessionRepository:
         for field, value in kwargs.items():
             setattr(session, field, value)
         await self._db.flush()
-        await self._db.refresh(session, ["patient", "therapist"])
+        await self._db.refresh(session, ["patient", "therapist", "updated_at", "created_at"])
         return session
+
+    async def list_by_patient(self, patient_id: uuid.UUID) -> list[Session]:
+        """Fetch all sessions for a specific patient.
+
+        Args:
+            patient_id: UUID of the patient.
+
+        Returns:
+            list[Session]: All associated sessions.
+        """
+        result = await self._db.execute(
+            select(Session).where(Session.patient_id == patient_id)
+        )
+        return list(result.scalars().all())
+
+    async def delete(self, session: Session) -> None:
+        """Physically delete a session from the DB.
+
+        Args:
+            session: The Session instance to delete.
+        """
+        await self._db.delete(session)
+        await self._db.commit()

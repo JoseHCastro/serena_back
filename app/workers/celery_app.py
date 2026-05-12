@@ -36,3 +36,12 @@ celery_app.conf.update(
     task_max_retries=3,
     task_default_retry_delay=60,  # seconds
 )
+
+# Import all ORM models to ensure SQLAlchemy registers all mappers and relationships
+# before any background task runs. This prevents Missing/Uninitialized mapper errors.
+import app.modules.auth.models  # noqa
+import app.modules.users.models  # noqa
+import app.modules.patients.models  # noqa
+import app.modules.sessions.models  # noqa
+import app.modules.biometric.models  # noqa
+import app.modules.alerts.models  # noqa
