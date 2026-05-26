@@ -78,6 +78,23 @@ def create_app() -> FastAPI:
     app.include_router(api_v1_router)
 
     # -------------------------------------------------------------------------
+    # Root Route
+    # -------------------------------------------------------------------------
+    @app.get("/", tags=["Root"], summary="Welcome Endpoint")
+    async def root() -> dict:
+        """Return a simple welcome message for the API.
+
+        Returns:
+            dict: Welcome message and API details.
+        """
+        return {
+            "message": "Welcome to Serena API",
+            "version": settings.APP_VERSION,
+            "docs": "/docs",
+            "health": "/health",
+        }
+
+    # -------------------------------------------------------------------------
     # Health check (no auth required — used by Docker healthcheck)
     # -------------------------------------------------------------------------
     @app.get("/health", tags=["Health"], summary="Health check")

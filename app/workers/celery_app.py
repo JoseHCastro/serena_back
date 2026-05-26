@@ -5,6 +5,7 @@ Defines the Celery app used for background tasks such as
 post-session emotional video analysis.
 """
 
+import ssl
 from celery import Celery
 
 from app.core.config import settings
@@ -35,6 +36,14 @@ celery_app.conf.update(
     # Retry policy defaults
     task_max_retries=3,
     task_default_retry_delay=60,  # seconds
+    # Connection / SSL settings
+    broker_connection_retry_on_startup=True,
+    broker_use_ssl={
+        "ssl_cert_reqs": ssl.CERT_NONE
+    } if settings.REDIS_URL.startswith("rediss://") else None,
+    redis_backend_use_ssl={
+        "ssl_cert_reqs": ssl.CERT_NONE
+    } if settings.REDIS_URL.startswith("rediss://") else None,
 )
 
 # Import all ORM models to ensure SQLAlchemy registers all mappers and relationships
