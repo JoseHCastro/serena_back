@@ -41,7 +41,11 @@ async def run_all_seeders() -> None:
         5. Biometric    (depends on Sessions)
         6. Alerts       (depends on Sessions + Patients)
     """
-    engine = create_async_engine(settings.DATABASE_URL, echo=False)
+    connect_args = {}
+    if "render.com" in settings.DATABASE_URL:
+        connect_args["ssl"] = True
+
+    engine = create_async_engine(settings.DATABASE_URL, echo=False, connect_args=connect_args)
     factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
 
     async with factory() as db:

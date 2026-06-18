@@ -29,12 +29,17 @@ class Base(DeclarativeBase):
 # ---------------------------------------------------------------------------
 # Async Engine
 # ---------------------------------------------------------------------------
+connect_args = {}
+if "render.com" in settings.DATABASE_URL:
+    connect_args["ssl"] = True
+
 engine = create_async_engine(
     settings.DATABASE_URL,
     echo=settings.DEBUG,       # Logs SQL statements in debug mode
     pool_pre_ping=True,        # Validates connections before handing them out
     pool_size=10,              # Base number of persistent connections
     max_overflow=20,           # Extra connections allowed beyond pool_size
+    connect_args=connect_args,
 )
 
 # ---------------------------------------------------------------------------
