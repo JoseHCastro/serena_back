@@ -17,7 +17,6 @@ services:
   serena_api:
     <<: *app-common
     container_name: serena_api
-    # Caddy manejara la conexion entrante y lo reenviara internamente aqui
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -36,6 +35,8 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: serena_postgres
+    ports:
+      - "5432:5432" # <-- ABRIMOS EL PUERTO PARA DBEAVER
     environment:
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
