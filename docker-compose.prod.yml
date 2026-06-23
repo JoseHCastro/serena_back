@@ -7,8 +7,6 @@ x-app-common: &app-common
     target: runtime
   env_file: .env
   depends_on:
-    redis:
-      condition: service_healthy
     postgres:
       condition: service_healthy
   restart: unless-stopped
@@ -19,7 +17,7 @@ services:
   serena_api:
     <<: *app-common
     container_name: serena_api
-    # Ya no exponemos el puerto 8000 al exterior, Caddy lo manejara internamente
+    # Caddy manejara la conexion entrante y lo reenviara internamente aqui
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
@@ -33,19 +31,6 @@ services:
     <<: *app-common
     container_name: serena_celery_worker
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
-
-  # ---- Redis ----
-  redis:
-    image: redis:7.2-alpine
-    container_name: serena_redis
-    volumes:
-      - redis_data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
 
   # ---- PostgreSQL (Base de Datos) ----
   postgres:
@@ -80,7 +65,6 @@ services:
       - serena_api
 
 volumes:
-  redis_data:
   postgres_data:
   caddy_data:
   caddy_config:

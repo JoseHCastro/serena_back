@@ -1,0 +1,4 @@
+serena-back.duckdns.org {
+    # Redirige todo el tráfico web a tu contenedor FastAPI (serena_api) en el puerto 8000
+    reverse_proxy serena_api:8000
+}
