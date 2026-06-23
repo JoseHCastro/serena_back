@@ -1,0 +1,86 @@
+version: "3.9"
+
+x-app-common: &app-common
+  build:
+    context: .
+    dockerfile: Dockerfile
+    target: runtime
+  env_file: .env
+  depends_on:
+    redis:
+      condition: service_healthy
+    postgres:
+      condition: service_healthy
+  restart: unless-stopped
+
+services:
+
+  # ---- FastAPI Application ----
+  serena_api:
+    <<: *app-common
+    container_name: serena_api
+    # Ya no exponemos el puerto 8000 al exterior, Caddy lo manejara internamente
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---- Celery Worker ----
+  celery_worker:
+    <<: *app-common
+    container_name: serena_celery_worker
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
+
+  # ---- Redis ----
+  redis:
+    image: redis:7.2-alpine
+    container_name: serena_redis
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---- PostgreSQL (Base de Datos) ----
+  postgres:
+    image: postgres:15-alpine
+    container_name: serena_postgres
+    environment:
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+      POSTGRES_DB: ${DB_NAME:-serenamente}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-postgres} -d ${DB_NAME:-serenamente}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ---- Caddy (Reverse Proxy Automático HTTPS) ----
+  caddy:
+    image: caddy:2-alpine
+    container_name: serena_caddy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - serena_api
+
+volumes:
+  redis_data:
+  postgres_data:
+  caddy_data:
+  caddy_config:
