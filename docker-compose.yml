@@ -1,19 +1,13 @@
 # ==============================================================================
-# Serena Backend — Docker Compose
+# Serena Backend — Docker Compose (desarrollo local)
 #
 # Services:
+#   postgres        — Base de datos PostgreSQL local
+#   redis           — Message broker para Celery
 #   serena_api      — FastAPI application
 #   celery_worker   — Background task processor (emotional analysis)
-#   redis           — Message broker for Celery
 #
-# Database Note:
-#   PostgreSQL runs on the HOST machine (not in Docker). We use
-#   extra_hosts to map host.docker.internal → host gateway so containers
-#   can reach localhost:5432 on the host.
-#
-#   IMPORTANT (Linux only): You must allow Docker subnet in pg_hba.conf:
-#     host  all  all  172.17.0.0/16  scram-sha-256
-#   And set listen_addresses = '*' in postgresql.conf, then restart pg.
+# Cloudinary se consume como servicio externo (no requiere contenedor).
 # ==============================================================================
 
 version: "3.9"
@@ -24,40 +18,33 @@ x-app-common: &app-common
     dockerfile: Dockerfile
     target: runtime
   env_file: .env
-  extra_hosts:
-    # Allows containers to reach PostgreSQL running on the host machine
-    - "host.docker.internal:host-gateway"
   depends_on:
+    postgres:
+      condition: service_healthy
     redis:
       condition: service_healthy
   restart: unless-stopped
 
 services:
 
-  # ---- FastAPI Application ----
-  serena_api:
-    <<: *app-common
-    container_name: serena_api
+  # ---- PostgreSQL (local) ----
+  postgres:
+    image: postgres:16-alpine
+    container_name: serena_postgres
+    environment:
+      POSTGRES_USER: serena
+      POSTGRES_PASSWORD: serena_local_123
+      POSTGRES_DB: serena_db
     ports:
-      - "8000:8000"
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - "5432:5432"
     volumes:
-      # Hot-reload: mount source code during development
-      - .:/app
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 20s
-
-  # ---- Celery Worker (post-session emotional analysis) ----
-  celery_worker:
-    <<: *app-common
-    container_name: serena_celery_worker
-    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
-    volumes:
-      - .:/app
+      test: ["CMD-SHELL", "pg_isready -U serena -d serena_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
 
   # ---- Redis (Celery broker + result backend) ----
   redis:
@@ -74,6 +61,32 @@ services:
       retries: 5
     restart: unless-stopped
 
+  # ---- FastAPI Application ----
+  serena_api:
+    <<: *app-common
+    container_name: serena_api
+    ports:
+      - "8000:8000"
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  # ---- Celery Worker (post-session emotional analysis) ----
+  celery_worker:
+    <<: *app-common
+    container_name: serena_celery_worker
+    command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=2
+    volumes:
+      - .:/app
+
 volumes:
+  postgres_data:
+    driver: local
   redis_data:
     driver: local

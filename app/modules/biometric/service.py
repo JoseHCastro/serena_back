@@ -47,7 +47,7 @@ def _analyze_frame(frame_base64: str, timestamp_offset: float) -> dict:
     The engine performs:
         1. Base64 decode → image bytes
         2. Face detection and cropping (MediaPipe)
-        3. Emotion classification (ONNX Runtime / MobileNetV2)
+        3. Emotion classification (ONNX Runtime )
         4. Softmax → probability distribution over 7 emotions
 
     Args:

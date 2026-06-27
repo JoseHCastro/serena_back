@@ -11,7 +11,7 @@ The engine handles:
     - Graceful fallback to mock when no model file is available
 
 Architecture:
-    MobileNetV2 fine-tuned on FER-2013 → ONNX export → ONNX Runtime inference
+    ONNX export → ONNX Runtime inference
 
 Usage:
     from app.modules.biometric.emotion_engine import EmotionEngine
