@@ -14,6 +14,7 @@ class SessionCreate(BaseModel):
     """Payload for scheduling a new therapy session."""
 
     patient_id: uuid.UUID
+    therapist_id: uuid.UUID | None = None
     scheduled_at: datetime
     notes: str | None = None
 

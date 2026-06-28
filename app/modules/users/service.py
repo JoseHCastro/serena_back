@@ -119,9 +119,12 @@ class UserService:
         user = await self._user_repo.get_by_id(user_id)
         if not user:
             raise NotFoundError("User")
-        updated = await self._user_repo.update(
-            user, **payload.model_dump(exclude_none=True)
-        )
+
+        update_data = payload.model_dump(exclude_none=True)
+        if "password" in update_data:
+            update_data["hashed_password"] = hash_password(update_data.pop("password"))
+
+        updated = await self._user_repo.update(user, **update_data)
         return UserResponse.model_validate(updated)
 
     async def delete_user(self, user_id: uuid.UUID) -> None:

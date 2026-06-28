@@ -39,21 +39,35 @@ class SessionService:
 
         Args:
             payload: Validated SessionCreate schema.
-            current_user: The authenticated therapist scheduling the session.
+            current_user: The authenticated user scheduling the session.
 
         Returns:
             SessionResponse: The newly created session.
 
         Raises:
-            NotFoundError: If the patient does not exist.
+            NotFoundError: If the patient or specified therapist does not exist.
+            BadRequestError: If a non-therapist omits therapist_id.
         """
+        from app.modules.users.repository import UserRepository
+
         patient = await self._patient_repo.get_by_id(payload.patient_id)
         if not patient:
             raise NotFoundError("Patient")
 
+        if payload.therapist_id:
+            user_repo = UserRepository(self._db)
+            therapist = await user_repo.get_by_id(payload.therapist_id)
+            if not therapist:
+                raise NotFoundError("Therapist")
+            therapist_id = payload.therapist_id
+        elif current_user.role.name in ("admin", "receptionist"):
+            raise BadRequestError("Se debe especificar el terapeuta para la sesión.")
+        else:
+            therapist_id = current_user.id
+
         session = await self._repo.create(
             patient_id=payload.patient_id,
-            therapist_id=current_user.id,
+            therapist_id=therapist_id,
             scheduled_at=payload.scheduled_at,
             notes=payload.notes,
             status=SessionStatus.SCHEDULED,

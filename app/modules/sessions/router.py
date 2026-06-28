@@ -2,9 +2,9 @@
 
 import uuid
 
-from fastapi import APIRouter, Body, Query, UploadFile, File
+from fastapi import APIRouter, Body, Depends, Query, UploadFile, File
 
-from app.core.dependencies import CurrentUser, DbSession
+from app.core.dependencies import CurrentUser, DbSession, require_roles
 from app.modules.sessions.models import SessionStatus
 from app.modules.sessions.schemas import (
     EmotionalTimeline,
@@ -80,7 +80,12 @@ async def get_session(
     return await SessionService(db).get_session(session_id)
 
 
-@router.post("/{session_id}/start", response_model=SessionResponse, summary="Start a session")
+@router.post(
+    "/{session_id}/start",
+    response_model=SessionResponse,
+    summary="Start a session",
+    dependencies=[Depends(require_roles("admin", "therapist"))],
+)
 async def start_session(
     session_id: uuid.UUID, db: DbSession, _: CurrentUser
 ) -> SessionResponse:

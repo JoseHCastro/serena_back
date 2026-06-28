@@ -12,6 +12,14 @@ from app.modules.users.service import UserService
 router = APIRouter(prefix="/users", tags=["Users"])
 
 
+@router.get("/roles", response_model=list[RoleResponse], summary="List all roles (authenticated)")
+async def list_roles(db: DbSession, _: CurrentUser) -> list[RoleResponse]:
+    """Return all available roles. Accessible by any authenticated user."""
+    from app.modules.users.repository import RoleRepository
+    roles = await RoleRepository(db).list_all()
+    return [RoleResponse.model_validate(r) for r in roles]
+
+
 @router.get("/therapists", response_model=list[UserResponse], summary="List all therapists")
 async def list_therapists(db: DbSession, _: CurrentUser) -> list[UserResponse]:
     """Return a list of all active users with the 'therapist' role.

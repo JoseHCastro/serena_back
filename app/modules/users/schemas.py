@@ -74,6 +74,7 @@ class UserUpdate(BaseModel):
     full_name: str | None = Field(None, min_length=2, max_length=255)
     role_id: uuid.UUID | None = None
     is_active: bool | None = None
+    password: str | None = Field(None, min_length=8, max_length=128)
 
 
 class UserResponse(UserBase):
