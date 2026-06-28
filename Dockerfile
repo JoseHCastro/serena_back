@@ -39,6 +39,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libffi8 \
     libgl1 \
     libglib2.0-0 \
+    libxml2 \
+    libxslt1.1 \
+    fonts-dejavu-core \
+    fontconfig \
+    && fc-cache -f \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user for security

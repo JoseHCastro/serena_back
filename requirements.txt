@@ -31,6 +31,10 @@ cloudinary==1.39.1            # Cloudinary SDK for media management
 
 # --- PDF Generation ---
 weasyprint==62.1              # HTML/CSS to PDF renderer
+pydyf==0.10.0                 # Pin: 0.11+ removed Stream.transform used by weasyprint 62.x
+
+# --- Excel Generation ---
+openpyxl==3.1.5               # .xlsx workbook creation for report exports
 
 # --- Logging ---
 loguru==0.7.2                 # Structured, beautiful logging
