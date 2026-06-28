@@ -224,6 +224,51 @@ class BiometricService:
             raise NotFoundError("BiometricAnalysisJob")
         return AnalysisJobResponse.model_validate(job)
 
+    async def get_patient_evolution(self, patient_id: uuid.UUID) -> ComparativeReport:
+        """Return per-session averaged emotion data for all analysed completed sessions.
+
+        Sessions with no biometric snapshots are excluded. Results are ordered
+        chronologically (oldest first) so the frontend can render a time-series.
+
+        Args:
+            patient_id: UUID of the patient.
+
+        Returns:
+            ComparativeReport: One SessionComparePoint per analysed session.
+        """
+        from app.modules.sessions.models import SessionStatus
+
+        sessions, _ = await self._session_repo.list_paginated(
+            page=1,
+            page_size=1000,
+            patient_id=patient_id,
+            status=SessionStatus.COMPLETED,
+        )
+        # list_paginated returns DESC; reverse for chronological ASC
+        sessions = list(reversed(sessions))
+
+        points = []
+        for session in sessions:
+            averages = await self._snapshot_repo.get_session_averages(session.id)
+            if averages["snapshot_count"] == 0:
+                continue
+            points.append(
+                SessionComparePoint(
+                    session_id=session.id,
+                    scheduled_at=session.scheduled_at,
+                    avg_happiness=averages["avg_happiness"],
+                    avg_sadness=averages["avg_sadness"],
+                    avg_anger=averages["avg_anger"],
+                    avg_fear=averages["avg_fear"],
+                    avg_disgust=averages["avg_disgust"],
+                    avg_surprise=averages["avg_surprise"],
+                    avg_neutral=averages["avg_neutral"],
+                    dominant_overall=averages["dominant_overall"],
+                    snapshot_count=averages["snapshot_count"],
+                )
+            )
+        return ComparativeReport(patient_id=patient_id, sessions=points)
+
     async def get_comparative_report(
         self, patient_id: uuid.UUID, session_ids: list[uuid.UUID]
     ) -> ComparativeReport:

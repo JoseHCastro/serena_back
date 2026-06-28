@@ -221,6 +221,29 @@ async def compare_sessions(
     return await BiometricService(db).get_comparative_report(patient_id, session_ids)
 
 
+@router.get(
+    "/patients/{patient_id}/evolution",
+    response_model=ComparativeReport,
+    summary="Patient emotional evolution across all completed sessions",
+)
+async def get_patient_evolution(
+    patient_id: uuid.UUID, db: DbSession, _: CurrentUser
+) -> ComparativeReport:
+    """Return chronological per-session emotional averages for a patient.
+
+    Sessions are ordered oldest-first. Sessions with no biometric snapshots
+    are excluded so the chart only shows analysed data points.
+
+    Args:
+        patient_id: UUID of the patient.
+        db: Database session.
+
+    Returns:
+        ComparativeReport: Ordered SessionComparePoints, one per analysed session.
+    """
+    return await BiometricService(db).get_patient_evolution(patient_id)
+
+
 # ---------------------------------------------------------------------------
 # WebSocket — real-time frame streaming
 # ---------------------------------------------------------------------------
